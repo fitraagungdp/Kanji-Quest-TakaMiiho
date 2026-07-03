@@ -108,6 +108,8 @@
   .xptrack{height:8px; background:#160f26; border-radius:5px; overflow:hidden; margin:6px auto; max-width:260px;}
   .xpfill{height:100%; background:linear-gradient(90deg,var(--accent2),var(--gold)); transition:width .35s;}
   .xptxt{font-size:11px; color:var(--muted);}
+  .leech{color:var(--bad); font-size:11px; border:1px solid var(--bad); border-radius:6px;
+    padding:1px 6px; margin-right:8px; vertical-align:middle; white-space:nowrap;}
 
   .next{width:100%; margin-top:16px; padding:13px; border:1px solid var(--accent); background:transparent;
     color:var(--accent); font-size:15px; font-weight:600; border-radius:10px; cursor:pointer;}
@@ -155,8 +157,9 @@
     <div class="label">出題モード / Mode</div>
     <div class="opts-row" id="modeRow">
       <div class="chip sel" data-mode="READ">読み・漢字<small>reading & kanji</small></div>
-      <div class="chip" data-mode="MEANING">意味<small>meaning quiz</small></div>
-      <div class="chip" data-mode="MIX">ミックス<small>both</small></div>
+      <div class="chip" data-mode="MEANING">意味<small>meaning</small></div>
+      <div class="chip" data-mode="CONTEXT">文脈<small>context fill</small></div>
+      <div class="chip" data-mode="MIX">ミックス<small>all types</small></div>
     </div>
 
     <div class="label">ふりがな / Furigana</div>
@@ -168,6 +171,7 @@
     <button class="primary" onclick="startGame()">冒険を始める ▶ Start</button>
     <div class="prog" id="progLine"></div>
     <div class="srs-info" id="srsInfo"></div>
+    <div class="review" id="leechBox"></div>
     <div style="text-align:center; margin-top:6px">
       <button class="linkbtn" id="srsReset">学習履歴をリセット / Reset progress</button>
     </div>
@@ -253,7 +257,7 @@ const ENEMIES = [
 /* ---------- State ---------- */
 let pool=[], floor=1, floors=3, enemy=null, ehp=0, ehpMax=0;
 let php=80, phpMax=80, combo=0, locked=false, curQ=null, curAns=null;
-let mp=25, mpMax=50, charged=false, potions=1, scrolls=0, runXP=0;
+let mp=25, mpMax=50, charged=false, potions=1, scrolls=0, runXP=0, curSent=null;
 let stats={correct:0, wrong:0}, mistakes=[];
 
 function shuffle(a){return a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]);}
@@ -295,13 +299,23 @@ function updateSrsInfo(){
   const now = Date.now();
   const qs = QUESTIONS.filter(q=> cfgLevel==="MIX" ? true : q.level===cfgLevel);
   let due=0, mastered=0;
+  const leeches=[];
   qs.forEach(q=>{
     const r = srs[qKey(q)];
     if(!r || r.due<=now) due++;
     if(r && r.b>=4) mastered++;
+    if(r && r.w>=4) leeches.push(q);
   });
   document.getElementById('srsInfo').innerHTML =
-    `復習・新規 <b>${due}</b>問 · 習得済み <b>${mastered}</b> / 全${qs.length}問`;
+    `復習・新規 <b>${due}</b>問 · 習得済み <b>${mastered}</b> / 全${qs.length}問` +
+    (leeches.length ? ` · <span style="color:var(--bad)">🔥苦手 <b>${leeches.length}</b>問</span>` : '');
+  const box=document.getElementById('leechBox');
+  if(!leeches.length){ box.innerHTML=''; return; }
+  leeches.sort((a,b)=> srs[qKey(b)].w - srs[qKey(a)].w);
+  box.innerHTML = `<h3>🔥 苦手リスト — これだけは要注意！</h3>` +
+    leeches.slice(0,15).map(q=>
+      `<div class="rev-item"><span class="leech">×${srs[qKey(q)].w}</span><span class="k">${q.reverse?q.ans:q.target}</span> <span class="r">${q.reverse?q.target:q.ans}</span> <span class="m"> · ${q.meaning}</span></div>`).join('') +
+    (leeches.length>15 ? `<div class="rev-item m">…他${leeches.length-15}件</div>` : '');
 }
 
 /* ---------- XP / Level (persisted) ---------- */
@@ -371,6 +385,28 @@ function usePotion(){
   updateBars(); updateSkills();
 }
 
+/* ---------- Question helpers ---------- */
+function segOf(s){ return s.split(',')[0].trim().toLowerCase(); }
+function dispForm(q){ return q.reverse ? q.ans : q.target; } // kanji form of the word
+function isLeech(q){ const r=srs[qKey(q)]; return !!r && r.w>=4; }
+// 文脈規定: pick 3 distractor words with a similar grammatical ending so form doesn't give it away
+function contextOpts(q){
+  const last=q.target.slice(-1), kanaEnd=/[ぁ-ん]/.test(last);
+  const cands=QUESTIONS.filter(x=> dispForm(x)!==dispForm(q)
+    && (cfgLevel==="MIX" || x.level===q.level)
+    && segOf(x.meaning)!==segOf(q.meaning));
+  let similar=cands.filter(x=>x.target.slice(-1)===last);
+  if(similar.length<3)
+    similar=similar.concat(cands.filter(x=> x.target.slice(-1)!==last
+      && /[ぁ-ん]/.test(x.target.slice(-1))===kanaEnd));
+  const seen=new Set([dispForm(q)]), picks=[];
+  for(const x of shuffle(similar)){
+    const d=dispForm(x);
+    if(!seen.has(d)){ seen.add(d); picks.push(d); if(picks.length===3) break; }
+  }
+  return shuffle([dispForm(q), ...picks]);
+}
+
 function buildPool(){
   const now = Date.now();
   const qs = QUESTIONS.filter(q=> cfgLevel==="MIX" ? true : q.level===cfgLevel);
@@ -436,20 +472,31 @@ function nextQuestion(){
   curQ = popQuestion();
   const q=curQ;
   const boss = floor===floors;
-  const meaningQ = !boss && (cfgMode==="MEANING" || (cfgMode==="MIX" && Math.random()<0.5));
+  // rotate example sentences when a question has several
+  curSent = Array.isArray(q.s) ? q.s[Math.floor(Math.random()*q.s.length)] : q.s;
+  let qtype = 'read';
+  if(!boss){
+    if(cfgMode==="MEANING") qtype='meaning';
+    else if(cfgMode==="CONTEXT") qtype='context';
+    else if(cfgMode==="MIX"){ const r=Math.random(); qtype = r<1/3 ? 'read' : (r<2/3 ? 'meaning' : 'context'); }
+  }
   document.getElementById('qLevel').textContent = q.level;
   document.getElementById('sentence').innerHTML =
-    furi(q.s).replace(/\{(.+?)\}/g, '<span class="hl">$1</span>');
+    furi(curSent).replace(/\{(.+?)\}/g, qtype==='context' ? '<span class="hl">（　　）</span>' : '<span class="hl">$1</span>');
   let opts;
-  if(meaningQ){
+  if(qtype==='meaning'){
     curAns = q.meaning;
     // distractors: meanings of other questions, skipping near-identical glosses
-    const seg = s=>s.split(',')[0].trim().toLowerCase();
     const others = shuffle([...new Set(QUESTIONS.map(x=>x.meaning))]
-      .filter(m=>seg(m)!==seg(q.meaning)));
+      .filter(m=>segOf(m)!==segOf(q.meaning)));
     opts = shuffle([q.meaning, ...others.slice(0,3)]);
     document.getElementById('qMode').textContent = "言葉 → 意味";
     document.getElementById('ask').textContent = `「${q.target}」の意味はどれ？`;
+  }else if(qtype==='context'){
+    opts = contextOpts(q);
+    curAns = dispForm(q);
+    document.getElementById('qMode').textContent = "文脈 → 言葉";
+    document.getElementById('ask').textContent = "（　　）に入る言葉はどれ？";
   }else{
     curAns = q.ans;
     opts = shuffle(q.opts);
@@ -461,7 +508,7 @@ function nextQuestion(){
   const c=document.getElementById('choices'); c.innerHTML='';
   opts.forEach((opt,i)=>{
     const b=document.createElement('button');
-    b.className='choice'+(meaningQ?' en':''); b.textContent=opt; b.dataset.key=(i+1);
+    b.className='choice'+(qtype==='meaning'?' en':''); b.textContent=opt; b.dataset.key=(i+1);
     b.onclick=()=>answer(b,opt);
     c.appendChild(b);
   });
@@ -512,7 +559,7 @@ function answer(btn,opt){
   rv.innerHTML =
     `<div>📖 <b style="color:var(--accent)">解説</b></div>
      <div><span class="word">${kanjiForm}</span><span class="yomi">「${kanaForm}」</span> — <span class="mean">${q.meaning}</span></div>
-     <div class="sent">${furi(q.s).replace(/\{(.+?)\}/g, `<span class="hl">${kanjiForm}</span>`)}</div>`;
+     <div class="sent">${furi(curSent).replace(/\{(.+?)\}/g, `<span class="hl">${kanjiForm}</span>`)}</div>`;
   rv.classList.add('show');
   updateBars();
   updateSkills();
@@ -570,7 +617,7 @@ function endGame(win){
   if(mistakes.length){
     const seen=new Set(); const uniq=mistakes.filter(m=>{const k=m.ans+m.target; if(seen.has(k))return false; seen.add(k); return true;});
     revHtml = `<div class="review"><h3>復習リスト — Review these (${uniq.length})</h3>` +
-      uniq.map(m=>`<div class="rev-item"><span class="k">${m.reverse?m.ans:m.target}</span>
+      uniq.map(m=>`<div class="rev-item">${isLeech(m)?'<span class="leech">🔥苦手 ×'+srs[qKey(m)].w+'</span>':''}<span class="k">${m.reverse?m.ans:m.target}</span>
         <span class="r">${m.reverse?m.target:m.ans}</span>
         <span class="m"> · ${m.meaning}</span></div>`).join('') + `</div>`;
   } else if(total>0){
