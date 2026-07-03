@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>漢字クエスト — Kanji Quest (N3/N4 RPG)</title>
+<style>
+  :root{
+    --bg:#1a1625; --panel:#251f38; --panel2:#2f2748; --line:#413764;
+    --ink:#efeafe; --sub:#b3a8d6; --muted:#8478a8;
+    --accent:#a78bfa; --accent2:#7c5cff;
+    --hp-enemy:#e24b4a; --hp-you:#1d9e75; --gold:#f0b429;
+    --good:#4ade80; --good-bg:#14351f; --bad:#f87171; --bad-bg:#3a1414;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:radial-gradient(1200px 600px at 50% -10%, #2b2145, var(--bg));
+    color:var(--ink); font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",-apple-system,"Segoe UI",system-ui,sans-serif;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    padding:20px 14px 60px;
+  }
+  .wrap{width:100%; max-width:680px;}
+  h1{font-size:22px; font-weight:600; letter-spacing:.02em; margin:0 0 2px; text-align:center;}
+  .tagline{text-align:center; color:var(--sub); font-size:13px; margin-bottom:18px;}
+
+  /* ---- Start screen ---- */
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:20px;}
+  .opts-row{display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 4px;}
+  .chip{flex:1; min-width:110px; text-align:center; padding:12px; border-radius:10px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--ink); cursor:pointer;
+    font-size:14px; transition:.15s; user-select:none;}
+  .chip:hover{border-color:var(--accent);}
+  .chip.sel{border-color:var(--accent); background:#3a2e63; box-shadow:0 0 0 1px var(--accent) inset;}
+  .chip small{display:block; color:var(--sub); font-size:11px; margin-top:3px;}
+  .label{font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:16px 0 2px;}
+  button.primary{width:100%; margin-top:20px; padding:14px; border:none; border-radius:10px;
+    background:var(--accent2); color:#fff; font-size:16px; font-weight:600; cursor:pointer; transition:.15s;}
+  button.primary:hover{background:#8f72ff;}
+  button.primary:active{transform:scale(.99);}
+
+  /* ---- HUD ---- */
+  .hud{display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--sub); margin-bottom:12px;}
+  .hud b{color:var(--ink);}
+  .combo-badge{color:var(--gold); font-weight:600;}
+
+  .bars{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:12px;}
+  .barlabel{display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px;}
+  .track{height:12px; background:#160f26; border-radius:7px; overflow:hidden; margin-bottom:14px;}
+  .track:last-child{margin-bottom:0;}
+  .fill{height:100%; transition:width .35s ease;}
+  .enemy-scene{text-align:center; font-size:56px; line-height:1; margin:6px 0 14px; filter:drop-shadow(0 6px 10px rgba(0,0,0,.4));}
+  .shake{animation:shk .4s;}
+  @keyframes shk{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(4px)}}
+  .hit{animation:flash .4s;}
+  @keyframes flash{0%,100%{filter:none}50%{filter:brightness(2) sepia(1) hue-rotate(-40deg)}}
+
+  .msg{text-align:center; font-size:14px; min-height:20px; margin-bottom:10px; font-weight:500;}
+
+  /* ---- Question ---- */
+  .qcard{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:20px;}
+  .qtype{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent);
+    margin-bottom:10px; display:flex; justify-content:space-between;}
+  .qtype .lv{color:var(--muted);}
+  .sentence{font-size:20px; line-height:2; margin-bottom:6px;}
+  .hl{color:#c4b5fd; font-weight:600; border-bottom:2px solid var(--accent2); padding-bottom:1px;}
+  .ask{font-size:14px; color:var(--sub); margin-bottom:18px;}
+  .choices{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .choice{padding:15px 10px; border:1px solid var(--line); background:var(--panel2); color:var(--ink);
+    border-radius:10px; font-size:17px; cursor:pointer; transition:.12s; text-align:center;}
+  .choice:hover{border-color:var(--accent);}
+  .choice.correct{border-color:var(--good); background:var(--good-bg); color:var(--good);}
+  .choice.wrong{border-color:var(--bad); background:var(--bad-bg); color:var(--bad);}
+  .choice:disabled{cursor:default;}
+  .reveal{margin-top:14px; display:none; background:var(--panel2); border:1px solid var(--line);
+    border-radius:10px; padding:12px 14px; font-size:13px; color:var(--sub); text-align:left; line-height:1.8;}
+  .reveal.show{display:block; animation:pop .25s ease;}
+  @keyframes pop{from{opacity:0; transform:translateY(-4px)}to{opacity:1; transform:none}}
+  .reveal .word{font-size:19px; color:#c4b5fd; font-weight:600;}
+  .reveal .yomi{color:var(--good); margin-left:8px; font-size:15px;}
+  .reveal .mean{color:var(--ink);}
+  .reveal .sent{margin-top:6px; padding-top:8px; border-top:1px dashed var(--line); font-size:14px;}
+
+  /* ---- Furigana ---- */
+  rt{font-size:10px; color:var(--muted); font-weight:400;}
+  body.nofuri rt{display:none;}
+  .mini{border:1px solid var(--line); background:var(--panel2); color:var(--sub); font-size:11px;
+    padding:4px 10px; border-radius:8px; cursor:pointer; margin-left:10px; transition:.15s;}
+  .mini:hover{border-color:var(--accent); color:var(--ink);}
+
+  /* ---- SRS info ---- */
+  .srs-info{font-size:12px; color:var(--muted); margin-top:16px; text-align:center;}
+  .srs-info b{color:var(--sub);}
+  .linkbtn{background:none; border:none; color:var(--muted); text-decoration:underline;
+    cursor:pointer; font-size:11px;}
+  .linkbtn:hover{color:var(--sub);}
+  .choice.en{font-size:14px;}
+
+  /* ---- RPG: MP, skills, XP ---- */
+  .skills{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; margin-bottom:12px;}
+  .skill{border:1px solid var(--line); background:var(--panel2); color:var(--ink); border-radius:10px;
+    padding:8px 6px; font-size:13px; cursor:pointer; transition:.12s; text-align:center;}
+  .skill small{display:block; color:var(--sub); font-size:10px; margin-top:2px;}
+  .skill:hover:not(:disabled){border-color:var(--accent);}
+  .skill:disabled{opacity:.35; cursor:default;}
+  .choice.eliminated{opacity:.25; pointer-events:none; text-decoration:line-through;}
+  .prog{margin-top:16px; text-align:center; font-size:13px; color:var(--sub);}
+  .xptrack{height:8px; background:#160f26; border-radius:5px; overflow:hidden; margin:6px auto; max-width:260px;}
+  .xpfill{height:100%; background:linear-gradient(90deg,var(--accent2),var(--gold)); transition:width .35s;}
+  .xptxt{font-size:11px; color:var(--muted);}
+
+  .next{width:100%; margin-top:16px; padding:13px; border:1px solid var(--accent); background:transparent;
+    color:var(--accent); font-size:15px; font-weight:600; border-radius:10px; cursor:pointer;}
+  .next:hover{background:#3a2e63;}
+
+  /* ---- End screen ---- */
+  .end{text-align:center; padding:26px 20px;}
+  .end .big{font-size:26px; font-weight:700; margin-bottom:6px;}
+  .stats{display:flex; gap:10px; justify-content:center; margin:18px 0; flex-wrap:wrap;}
+  .stat{background:var(--panel2); border-radius:10px; padding:12px 16px; min-width:90px;}
+  .stat .n{font-size:22px; font-weight:700;}
+  .stat .l{font-size:11px; color:var(--sub); text-transform:uppercase; letter-spacing:.05em;}
+  .review{text-align:left; margin-top:14px;}
+  .review h3{font-size:14px; color:var(--sub); margin:0 0 8px;}
+  .rev-item{background:var(--panel2); border-radius:8px; padding:10px 12px; margin-bottom:8px; font-size:14px;}
+  .rev-item .k{font-size:16px; color:#c4b5fd; margin-right:8px;}
+  .rev-item .r{color:var(--good);}
+  .rev-item .m{color:var(--muted); font-size:12px;}
+  .hidden{display:none;}
+  .footer{text-align:center; color:var(--muted); font-size:11px; margin-top:24px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>漢字クエスト</h1>
+  <div class="tagline">Kanji Quest — 読めば斬れる。 A turn-based RPG for JLPT N3/N4 kanji</div>
+
+  <!-- START -->
+  <div id="start" class="card">
+    <div class="label">レベル / Level</div>
+    <div class="opts-row" id="levelRow">
+      <div class="chip sel" data-level="N4">N4<small>基礎 · easier</small></div>
+      <div class="chip" data-level="N3">N3<small>中級 · harder</small></div>
+      <div class="chip" data-level="MIX">N3+N4<small>全部 · mixed</small></div>
+    </div>
+
+    <div class="label">問題の長さ / Battles</div>
+    <div class="opts-row" id="lengthRow">
+      <div class="chip sel" data-floors="3">短い<small>3 floors</small></div>
+      <div class="chip" data-floors="4">普通<small>4 floors</small></div>
+      <div class="chip" data-floors="5">長い<small>5 floors</small></div>
+      <div class="chip" data-floors="10">鬼<small>10 floors · drill</small></div>
+    </div>
+
+    <div class="label">出題モード / Mode</div>
+    <div class="opts-row" id="modeRow">
+      <div class="chip sel" data-mode="READ">読み・漢字<small>reading & kanji</small></div>
+      <div class="chip" data-mode="MEANING">意味<small>meaning quiz</small></div>
+      <div class="chip" data-mode="MIX">ミックス<small>both</small></div>
+    </div>
+
+    <div class="label">ふりがな / Furigana</div>
+    <div class="opts-row" id="furiRow">
+      <div class="chip" data-furi="1">ON<small>ふりがな表示</small></div>
+      <div class="chip" data-furi="0">OFF<small>非表示</small></div>
+    </div>
+
+    <button class="primary" onclick="startGame()">冒険を始める ▶ Start</button>
+    <div class="prog" id="progLine"></div>
+    <div class="srs-info" id="srsInfo"></div>
+    <div style="text-align:center; margin-top:6px">
+      <button class="linkbtn" id="srsReset">学習履歴をリセット / Reset progress</button>
+    </div>
+  </div>
+
+  <!-- BATTLE -->
+  <div id="battle" class="hidden">
+    <div class="hud">
+      <div>Lv.<b id="hudLv">1</b> · Floor <b id="floorNum">1</b> / <b id="floorMax">3</b> · <b id="enemyName">スライム</b></div>
+      <div>Combo <span class="combo-badge" id="comboVal">0</span><button class="mini" id="furiBtn">ふりがな ON</button></div>
+    </div>
+
+    <div class="bars">
+      <div class="enemy-scene" id="enemyScene">🟢</div>
+      <div class="barlabel"><span style="color:var(--hp-enemy)">敵 HP</span><span id="ehpTxt" style="color:var(--sub)">100 / 100</span></div>
+      <div class="track"><div class="fill" id="ehpBar" style="width:100%; background:var(--hp-enemy)"></div></div>
+      <div class="barlabel"><span style="color:var(--hp-you)">あなた HP</span><span id="phpTxt" style="color:var(--sub)">100 / 100</span></div>
+      <div class="track"><div class="fill" id="phpBar" style="width:100%; background:var(--hp-you)"></div></div>
+      <div class="barlabel"><span style="color:#4a9eff">MP</span><span id="mpTxt" style="color:var(--sub)">25 / 50</span></div>
+      <div class="track"><div class="fill" id="mpBar" style="width:50%; background:#4a9eff"></div></div>
+    </div>
+
+    <div class="msg" id="battleMsg"></div>
+
+    <div class="skills">
+      <button class="skill" id="skSpecial">⚡ 必殺技<small>MP30 · 次の正解2倍</small></button>
+      <button class="skill" id="skHint">💡 ヒント<small>MP15 · 誤答を1つ消す</small></button>
+      <button class="skill" id="skPotion">🧪 ポーション<small>×1 · HP+35</small></button>
+      <button class="skill" id="skScroll">📜 巻物<small>×0 · 無料ヒント</small></button>
+    </div>
+
+    <div class="qcard">
+      <div class="qtype"><span id="qMode">漢字 → 読み</span><span class="lv" id="qLevel">N3</span></div>
+      <div class="sentence" id="sentence"></div>
+      <div class="ask" id="ask"></div>
+      <div class="choices" id="choices"></div>
+      <div class="reveal" id="reveal"></div>
+    </div>
+
+    <button class="next hidden" id="nextBtn">次へ →</button>
+  </div>
+
+  <!-- END -->
+  <div id="end" class="card hidden"></div>
+
+  <div class="footer">ローカルで動作 · 問題は N3/N4 漢字リストより作成 · 矢印キー/クリックで回答</div>
+</div>
+
+<script src="questions.js"></script>
+<script>
+/* ---------- Config selection ---------- */
+let cfgLevel = "N4", cfgFloors = 3, cfgMode = "READ";
+document.getElementById('levelRow').addEventListener('click', e=>{
+  const c = e.target.closest('.chip'); if(!c) return;
+  document.querySelectorAll('#levelRow .chip').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel'); cfgLevel = c.dataset.level;
+  updateSrsInfo();
+});
+document.getElementById('modeRow').addEventListener('click', e=>{
+  const c = e.target.closest('.chip'); if(!c) return;
+  document.querySelectorAll('#modeRow .chip').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel'); cfgMode = c.dataset.mode;
+});
+document.getElementById('furiRow').addEventListener('click', e=>{
+  const c = e.target.closest('.chip'); if(!c) return;
+  setFuri(c.dataset.furi==='1');
+});
+document.getElementById('lengthRow').addEventListener('click', e=>{
+  const c = e.target.closest('.chip'); if(!c) return;
+  document.querySelectorAll('#lengthRow .chip').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel'); cfgFloors = parseInt(c.dataset.floors,10);
+});
+
+/* ---------- Enemies ---------- */
+const ENEMIES = [
+  {name:"スライム",   emoji:"🟢", hp:100},
+  {name:"ゴブリン",   emoji:"👺", hp:130},
+  {name:"オオカミ",   emoji:"🐺", hp:160},
+  {name:"魔導士",     emoji:"🧙", hp:190},
+  {name:"ドラゴン王", emoji:"🐉", hp:230},
+];
+
+/* ---------- State ---------- */
+let pool=[], floor=1, floors=3, enemy=null, ehp=0, ehpMax=0;
+let php=80, phpMax=80, combo=0, locked=false, curQ=null, curAns=null;
+let mp=25, mpMax=50, charged=false, potions=1, scrolls=0, runXP=0;
+let stats={correct:0, wrong:0}, mistakes=[];
+
+function shuffle(a){return a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]);}
+
+/* ---------- Furigana ---------- */
+const FURI_KEY='kanjiquest_furi';
+let furiOn = localStorage.getItem(FURI_KEY)!=='0';
+function furi(text){
+  return text.replace(/([々一-鿿]+)\[([^\]]+)\]/g, '<ruby>$1<rt>$2</rt></ruby>');
+}
+function applyFuri(){
+  document.body.classList.toggle('nofuri', !furiOn);
+  document.getElementById('furiBtn').textContent = 'ふりがな ' + (furiOn?'ON':'OFF');
+  document.querySelectorAll('#furiRow .chip').forEach(x=>
+    x.classList.toggle('sel', x.dataset.furi === (furiOn?'1':'0')));
+}
+function setFuri(on){
+  furiOn = on;
+  try{ localStorage.setItem(FURI_KEY, on?'1':'0'); }catch(e){}
+  applyFuri();
+}
+
+/* ---------- Spaced repetition (Leitner boxes, persisted) ---------- */
+const SRS_KEY='kanjiquest_srs';
+// box 0-5 → delay before the question is due again
+const SRS_STEP=[0, 4*36e5, 24*36e5, 3*24*36e5, 7*24*36e5, 14*24*36e5];
+let srs={};
+try{ srs = JSON.parse(localStorage.getItem(SRS_KEY)) || {}; }catch(e){ srs={}; }
+function qKey(q){ return q.level+'|'+q.target+'|'+(q.reverse?'R':'K'); }
+function srsUpdate(q, right){
+  const r = srs[qKey(q)] || {b:0, c:0, w:0};
+  if(right){ r.b = Math.min(r.b+1, 5); r.c++; }
+  else     { r.b = 0; r.w++; }
+  r.due = Date.now() + SRS_STEP[r.b];
+  srs[qKey(q)] = r;
+  try{ localStorage.setItem(SRS_KEY, JSON.stringify(srs)); }catch(e){}
+}
+function updateSrsInfo(){
+  const now = Date.now();
+  const qs = QUESTIONS.filter(q=> cfgLevel==="MIX" ? true : q.level===cfgLevel);
+  let due=0, mastered=0;
+  qs.forEach(q=>{
+    const r = srs[qKey(q)];
+    if(!r || r.due<=now) due++;
+    if(r && r.b>=4) mastered++;
+  });
+  document.getElementById('srsInfo').innerHTML =
+    `復習・新規 <b>${due}</b>問 · 習得済み <b>${mastered}</b> / 全${qs.length}問`;
+}
+
+/* ---------- XP / Level (persisted) ---------- */
+const PROG_KEY='kanjiquest_prog';
+const TITLES=['見習い','旅人','剣士','侍','忍者','賢者','達人','漢字王','伝説'];
+let prog={xp:0, lvl:1};
+try{ prog = JSON.parse(localStorage.getItem(PROG_KEY)) || {xp:0, lvl:1}; }catch(e){ prog={xp:0, lvl:1}; }
+function xpTotalFor(l){ return 100*(l-1)*l/2; } // cumulative XP required to reach level l
+function maxHpFor(){ return Math.min(130, 80+(prog.lvl-1)*5); }
+function titleFor(){ return TITLES[Math.min(prog.lvl-1, TITLES.length-1)]; }
+function gainXP(n){
+  prog.xp+=n; runXP+=n;
+  let leveled=false;
+  while(prog.xp >= xpTotalFor(prog.lvl+1)){ prog.lvl++; leveled=true; }
+  if(leveled){ phpMax=maxHpFor(); php=Math.min(phpMax, php+15); }
+  try{ localStorage.setItem(PROG_KEY, JSON.stringify(prog)); }catch(e){}
+  updateProg();
+  return leveled;
+}
+function updateProg(){
+  const cur=xpTotalFor(prog.lvl), next=xpTotalFor(prog.lvl+1);
+  const pct=Math.max(0, Math.min(100, Math.round((prog.xp-cur)/(next-cur)*100)));
+  document.getElementById('progLine').innerHTML =
+    `<b style="color:var(--gold)">Lv.${prog.lvl}</b> ${titleFor()}` +
+    `<div class="xptrack"><div class="xpfill" style="width:${pct}%"></div></div>` +
+    `<span class="xptxt">${prog.xp-cur} / ${next-cur} XP · レベルアップでHP最大値+5</span>`;
+}
+
+/* ---------- Skills & items ---------- */
+function updateSkills(){
+  const sp=document.getElementById('skSpecial');
+  sp.disabled = locked || charged || mp<30;
+  sp.innerHTML = '⚡ 必殺技<small>'+(charged?'チャージ中！次の正解2倍':'MP30 · 次の正解2倍')+'</small>';
+  const hi=document.getElementById('skHint');
+  hi.disabled = locked || mp<15;
+  const po=document.getElementById('skPotion');
+  po.disabled = potions<1 || php>=phpMax || php<=0;
+  po.innerHTML = `🧪 ポーション<small>×${potions} · HP+35</small>`;
+  const sc=document.getElementById('skScroll');
+  sc.disabled = locked || scrolls<1;
+  sc.innerHTML = `📜 巻物<small>×${scrolls} · 無料ヒント</small>`;
+}
+function useSpecial(){
+  if(locked || charged || mp<30) return;
+  mp-=30; charged=true;
+  const msg=document.getElementById('battleMsg');
+  msg.style.color='var(--gold)';
+  msg.textContent='⚡ 必殺技チャージ！次の正解で2倍ダメージ！';
+  updateBars(); updateSkills();
+}
+function useHint(free){
+  if(locked) return;
+  if(free ? scrolls<1 : mp<15) return;
+  const wrong=[...document.querySelectorAll('.choice')]
+    .filter(b=>!b.disabled && !b.classList.contains('eliminated') && b.textContent!==curAns);
+  if(!wrong.length) return;
+  if(free) scrolls--; else mp-=15;
+  wrong[Math.floor(Math.random()*wrong.length)].classList.add('eliminated');
+  updateBars(); updateSkills();
+}
+function usePotion(){
+  if(potions<1 || php>=phpMax || php<=0) return;
+  potions--; php=Math.min(phpMax, php+35);
+  const msg=document.getElementById('battleMsg');
+  msg.style.color='var(--good)';
+  msg.textContent='🧪 ポーションを飲んだ！ HP+35';
+  updateBars(); updateSkills();
+}
+
+function buildPool(){
+  const now = Date.now();
+  const qs = QUESTIONS.filter(q=> cfgLevel==="MIX" ? true : q.level===cfgLevel);
+  const due=[], later=[];
+  qs.forEach(q=>{
+    const r = srs[qKey(q)];
+    ((!r || r.due<=now) ? due : later).push(q);
+  });
+  // pool.pop() takes from the end, so due/new questions go last (= asked first)
+  return shuffle(later).concat(shuffle(due));
+}
+
+function startGame(){
+  floors=cfgFloors; floor=1; phpMax=maxHpFor(); php=phpMax; combo=0;
+  mp=25; charged=false; potions=1; scrolls=0; runXP=0;
+  stats={correct:0,wrong:0}; mistakes=[];
+  pool=buildPool();
+  const nb=document.getElementById('nextBtn');
+  nb.textContent='次へ →'; nb.onclick=nextQuestion;
+  document.getElementById('start').classList.add('hidden');
+  document.getElementById('end').classList.add('hidden');
+  document.getElementById('battle').classList.remove('hidden');
+  document.getElementById('floorMax').textContent=floors;
+  spawnEnemy();
+  nextQuestion();
+}
+
+function spawnEnemy(){
+  enemy = ENEMIES[Math.min(floor-1, ENEMIES.length-1)];
+  ehpMax = enemy.hp + (floor-1)*10 + (floor===floors ? 40 : 0);
+  ehp = ehpMax;
+  document.getElementById('floorNum').textContent=floor;
+  document.getElementById('enemyName').textContent=(floor===floors?'👑':'')+enemy.name;
+  document.getElementById('enemyScene').textContent=enemy.emoji;
+  updateBars();
+}
+
+function updateBars(){
+  document.getElementById('ehpBar').style.width=(ehp/ehpMax*100)+'%';
+  document.getElementById('phpBar').style.width=(php/phpMax*100)+'%';
+  document.getElementById('mpBar').style.width=(mp/mpMax*100)+'%';
+  document.getElementById('ehpTxt').textContent=`${ehp} / ${ehpMax}`;
+  document.getElementById('phpTxt').textContent=`${php} / ${phpMax}`;
+  document.getElementById('mpTxt').textContent=`${mp} / ${mpMax}`;
+  document.getElementById('hudLv').textContent=prog.lvl;
+  document.getElementById('comboVal').textContent=combo;
+}
+
+function popQuestion(){
+  if(pool.length===0) pool=buildPool();
+  if(floor===floors){ // boss barrier: only kana→kanji questions can hurt the boss
+    for(let i=pool.length-1; i>=0; i--){
+      if(pool[i].reverse) return pool.splice(i,1)[0];
+    }
+    const rev=shuffle(QUESTIONS.filter(q=>(cfgLevel==="MIX"||q.level===cfgLevel) && q.reverse));
+    if(rev.length) return rev[0];
+  }
+  return pool.pop();
+}
+
+function nextQuestion(){
+  locked=false;
+  curQ = popQuestion();
+  const q=curQ;
+  const boss = floor===floors;
+  const meaningQ = !boss && (cfgMode==="MEANING" || (cfgMode==="MIX" && Math.random()<0.5));
+  document.getElementById('qLevel').textContent = q.level;
+  document.getElementById('sentence').innerHTML =
+    furi(q.s).replace(/\{(.+?)\}/g, '<span class="hl">$1</span>');
+  let opts;
+  if(meaningQ){
+    curAns = q.meaning;
+    // distractors: meanings of other questions, skipping near-identical glosses
+    const seg = s=>s.split(',')[0].trim().toLowerCase();
+    const others = shuffle([...new Set(QUESTIONS.map(x=>x.meaning))]
+      .filter(m=>seg(m)!==seg(q.meaning)));
+    opts = shuffle([q.meaning, ...others.slice(0,3)]);
+    document.getElementById('qMode').textContent = "言葉 → 意味";
+    document.getElementById('ask').textContent = `「${q.target}」の意味はどれ？`;
+  }else{
+    curAns = q.ans;
+    opts = shuffle(q.opts);
+    document.getElementById('qMode').textContent = (q.reverse ? "かな → 漢字" : "漢字 → 読み") + (boss ? " · 👑BOSS" : "");
+    document.getElementById('ask').textContent = q.reverse
+      ? `「${q.target}」の漢字はどれ？`
+      : `「${q.target}」の読み方はどれ？`;
+  }
+  const c=document.getElementById('choices'); c.innerHTML='';
+  opts.forEach((opt,i)=>{
+    const b=document.createElement('button');
+    b.className='choice'+(meaningQ?' en':''); b.textContent=opt; b.dataset.key=(i+1);
+    b.onclick=()=>answer(b,opt);
+    c.appendChild(b);
+  });
+  const rv=document.getElementById('reveal');
+  rv.classList.remove('show'); rv.innerHTML='';
+  document.getElementById('nextBtn').classList.add('hidden');
+  document.getElementById('battleMsg').textContent='';
+  updateSkills();
+}
+
+function answer(btn,opt){
+  if(locked) return; locked=true;
+  const q=curQ, right = opt===curAns;
+  document.querySelectorAll('.choice').forEach(b=>{
+    b.disabled=true;
+    if(b.textContent===curAns) b.classList.add('correct');
+    else if(b===btn) b.classList.add('wrong');
+  });
+  srsUpdate(q, right);
+  const msg=document.getElementById('battleMsg');
+  const scene=document.getElementById('enemyScene');
+  if(right){
+    stats.correct++; combo++;
+    let dmg = 22 + Math.min(combo-1,4)*7, extra='';
+    if(charged){ dmg*=2; charged=false; extra=' ⚡必殺技！'; }
+    ehp=Math.max(0,ehp-dmg);
+    mp=Math.min(mpMax, mp+6+Math.min(combo-1,4)*2);
+    const up=gainXP(10+Math.min(combo-1,4)*2);
+    msg.style.color='var(--good)';
+    msg.innerHTML = `⚔️ 正解！${extra} ${dmg} ダメージ` + (combo>1?` <span style="color:var(--gold)">コンボ×${combo}</span>`:'')
+      + (up?`<br>🆙 レベルアップ！ Lv.${prog.lvl} ${titleFor()} — HP最大値アップ！`:'');
+    scene.classList.remove('hit'); void scene.offsetWidth; scene.classList.add('hit');
+  }else{
+    stats.wrong++; combo=0;
+    const hit = floor===floors ? 20 : 16;
+    php=Math.max(0,php-hit);
+    mp=Math.min(mpMax, mp+2);
+    gainXP(2);
+    msg.style.color='var(--bad)';
+    msg.innerHTML = `💥 不正解… ${hit} ダメージを受けた`;
+    document.querySelector('.bars').classList.remove('shake'); void document.querySelector('.bars').offsetWidth;
+    document.querySelector('.bars').classList.add('shake');
+    mistakes.push(q);
+  }
+  const kanjiForm = q.reverse ? q.ans : q.target;
+  const kanaForm  = q.reverse ? q.target : q.ans;
+  const rv=document.getElementById('reveal');
+  rv.innerHTML =
+    `<div>📖 <b style="color:var(--accent)">解説</b></div>
+     <div><span class="word">${kanjiForm}</span><span class="yomi">「${kanaForm}」</span> — <span class="mean">${q.meaning}</span></div>
+     <div class="sent">${furi(q.s).replace(/\{(.+?)\}/g, `<span class="hl">${kanjiForm}</span>`)}</div>`;
+  rv.classList.add('show');
+  updateBars();
+  updateSkills();
+
+  if(php<=0){ setTimeout(()=>endGame(false),700); return; }
+  if(ehp<=0){
+    if(floor>=floors){ setTimeout(()=>endGame(true),700); return; }
+    setTimeout(defeatEnemy,700); return;
+  }
+  document.getElementById('nextBtn').classList.remove('hidden');
+}
+
+function defeatEnemy(){
+  const heal=18; php=Math.min(phpMax, php+heal);
+  gainXP(30);
+  let dropTxt;
+  if(Math.random()<0.6){ potions++; dropTxt='🧪 ポーションを手に入れた！'; }
+  else { scrolls++; dropTxt='📜 巻物を手に入れた！'; }
+  floor++; spawnEnemy();
+  const msg=document.getElementById('battleMsg');
+  msg.style.color='var(--accent)';
+  msg.innerHTML = (floor===floors
+    ? `👑 ボス ${enemy.name} が現れた！ バリアは「かな→漢字」の正解でしか破れない！`
+    : `🎉 ${enemy.name} が現れた！`) + ` HP+${heal} 回復。 ${dropTxt}`;
+  const nb=document.getElementById('nextBtn');
+  nb.textContent='次の敵と戦う →'; nb.classList.remove('hidden');
+  nb.onclick=()=>{ nb.textContent='次へ →'; nb.onclick=nextQuestion; nextQuestion(); };
+  updateBars(); updateSkills();
+}
+
+document.getElementById('nextBtn').onclick=nextQuestion;
+document.getElementById('furiBtn').onclick=()=>setFuri(!furiOn);
+document.getElementById('srsReset').onclick=()=>{
+  if(confirm('学習履歴とレベルをリセットしますか？ / Reset SRS & level progress?')){
+    srs={}; prog={xp:0, lvl:1};
+    try{ localStorage.removeItem(SRS_KEY); localStorage.removeItem(PROG_KEY); }catch(e){}
+    updateSrsInfo(); updateProg();
+  }
+};
+document.getElementById('skSpecial').onclick=useSpecial;
+document.getElementById('skHint').onclick=()=>useHint(false);
+document.getElementById('skScroll').onclick=()=>useHint(true);
+document.getElementById('skPotion').onclick=usePotion;
+applyFuri();
+updateSrsInfo();
+updateProg();
+
+function endGame(win){
+  if(win) gainXP(80);
+  document.getElementById('battle').classList.add('hidden');
+  const el=document.getElementById('end'); el.classList.remove('hidden');
+  const total=stats.correct+stats.wrong;
+  const acc= total? Math.round(stats.correct/total*100):0;
+  let revHtml='';
+  if(mistakes.length){
+    const seen=new Set(); const uniq=mistakes.filter(m=>{const k=m.ans+m.target; if(seen.has(k))return false; seen.add(k); return true;});
+    revHtml = `<div class="review"><h3>復習リスト — Review these (${uniq.length})</h3>` +
+      uniq.map(m=>`<div class="rev-item"><span class="k">${m.reverse?m.ans:m.target}</span>
+        <span class="r">${m.reverse?m.target:m.ans}</span>
+        <span class="m"> · ${m.meaning}</span></div>`).join('') + `</div>`;
+  } else if(total>0){
+    revHtml = `<div class="review"><h3>復習リスト</h3><div class="rev-item">ミスなし！ 完璧です 💯</div></div>`;
+  }
+  el.innerHTML = `
+    <div class="end">
+      <div class="big" style="color:${win?'var(--good)':'var(--bad)'}">${win?'クリア！ 🏆':'ゲームオーバー'}</div>
+      <div style="color:var(--sub); font-size:14px">${win?'全ての敵を倒しました。N3合格へ前進！':'Floor '+floor+' で力尽きた。'}</div>
+      <div class="stats">
+        <div class="stat"><div class="n" style="color:var(--good)">${stats.correct}</div><div class="l">正解</div></div>
+        <div class="stat"><div class="n" style="color:var(--bad)">${stats.wrong}</div><div class="l">不正解</div></div>
+        <div class="stat"><div class="n" style="color:var(--accent)">${acc}%</div><div class="l">正答率</div></div>
+        <div class="stat"><div class="n" style="color:var(--gold)">+${runXP}</div><div class="l">XP</div></div>
+      </div>
+      <div style="color:var(--sub); font-size:13px; margin-bottom:4px">Lv.${prog.lvl} ${titleFor()}</div>
+      ${revHtml}
+      <button class="primary" onclick="backToStart()">もう一度 ▶ Play again</button>
+    </div>`;
+}
+
+function backToStart(){
+  document.getElementById('end').classList.add('hidden');
+  document.getElementById('start').classList.remove('hidden');
+  updateSrsInfo();
+}
+
+/* Keyboard 1-4 to answer, Enter/Space for next */
+document.addEventListener('keydown', e=>{
+  if(document.getElementById('battle').classList.contains('hidden')) return;
+  if(['1','2','3','4'].includes(e.key)){
+    const b=document.querySelector(`.choice[data-key="${e.key}"]`);
+    if(b && !b.disabled) b.click();
+  }
+  if((e.key==='Enter'||e.key===' ')){
+    const nb=document.getElementById('nextBtn');
+    if(!nb.classList.contains('hidden')){ e.preventDefault(); nb.click(); }
+  }
+});
+</script>
+</body>
+</html>
